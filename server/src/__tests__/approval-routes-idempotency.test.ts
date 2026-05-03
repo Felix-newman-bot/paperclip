@@ -12,6 +12,7 @@ const mockApprovalService = vi.hoisted(() => ({
   reject: vi.fn(),
   requestRevision: vi.fn(),
   resubmit: vi.fn(),
+  publish: vi.fn(),
   updateContent: vi.fn(),
   listComments: vi.fn(),
   addComment: vi.fn(),
@@ -127,6 +128,46 @@ describe("approval routes idempotent retries", () => {
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
     expect(mockLogActivity).not.toHaveBeenCalled();
     expect(mockNotifyKatyaPublishApproved).not.toHaveBeenCalled();
+  });
+
+
+  it("POST /approvals/:id/publish marks approval published with proof metadata", async () => {
+    mockApprovalService.getById.mockResolvedValue({
+      id: "approval-1",
+      companyId: "company-1",
+      type: "approve_ceo_strategy",
+      status: "approved",
+      payload: { draft: "approved post" },
+      requestedByAgentId: null,
+    });
+    mockApprovalService.publish.mockResolvedValue({
+      id: "approval-1",
+      companyId: "company-1",
+      type: "approve_ceo_strategy",
+      status: "published",
+      payload: {
+        draft: "approved post",
+        publishedUrl: "https://x.com/PelergyTech/status/123",
+        platformChannel: "x",
+        publishedAt: "2026-05-03T04:00:00.000Z",
+      },
+    });
+
+    const body = {
+      publishedUrl: "https://x.com/PelergyTech/status/123",
+      platformChannel: "x",
+      publishedAt: "2026-05-03T04:00:00.000Z",
+    };
+    const res = await request(createApp())
+      .post("/api/approvals/approval-1/publish")
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(mockApprovalService.publish).toHaveBeenCalledWith("approval-1", body);
+    expect(mockLogActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "approval.published" }),
+    );
   });
 
   it("PATCH /approvals/:id/content writes edited payload back to the canonical approval", async () => {

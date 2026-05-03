@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
+  publishApprovalSchema,
   requestApprovalRevisionSchema,
   resolveApprovalSchema,
   resubmitApprovalSchema,
@@ -369,6 +370,34 @@ export function approvalRoutes(db: Db) {
       entityType: "approval",
       entityId: approval.id,
       details: { type: approval.type },
+    });
+    res.json(redactApprovalPayload(approval));
+  });
+
+  router.post("/approvals/:id/publish", validate(publishApprovalSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Approval not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+
+    const approval = await svc.publish(id, req.body ?? {});
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: approval.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "approval.published",
+      entityType: "approval",
+      entityId: approval.id,
+      details: {
+        type: approval.type,
+        publishedUrl: req.body?.publishedUrl ?? req.body?.proofUrl ?? req.body?.postUrl ?? null,
+        platformChannel: req.body?.platformChannel ?? null,
+      },
     });
     res.json(redactApprovalPayload(approval));
   });

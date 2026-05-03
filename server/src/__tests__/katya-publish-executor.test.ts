@@ -78,6 +78,7 @@ describe("tickKatyaPublishExecutor", () => {
         blogsDiscovered: 0,
         socialsSubstituted: 0,
         socialsDeferred: 0,
+        socialsAlreadyPublished: 0,
         errors: 0,
       });
       expect(db.select).toHaveBeenCalledTimes(1);
@@ -268,6 +269,34 @@ describe("tickKatyaPublishExecutor", () => {
   });
 
   describe("standalone social (no placeholder)", () => {
+
+    it("completes social work product without selecting it when external proof already exists", async () => {
+      const socialWP = makeWP({ metadata: { approvalId: "approval-social" } });
+      const socialApproval = makeApproval({
+        id: "approval-social",
+        status: "approved",
+        payload: {
+          channel: "linkedin",
+          draft: "Already posted externally",
+          publishedUrl: "https://www.linkedin.com/feed/update/urn:li:share:123/",
+        },
+      });
+
+      const db = buildDbMock({
+        selectQueue: [
+          [socialWP],
+          [socialApproval],
+        ],
+      });
+
+      const result = await tickKatyaPublishExecutor(db as any);
+
+      expect(result.socialsAlreadyPublished).toBe(1);
+      expect(result.socialsSubstituted).toBe(0);
+      expect(result.socialsDeferred).toBe(0);
+      expect(db.update).toHaveBeenCalledTimes(1);
+    });
+
     it("does not touch a social approval that has no {{BLOG_URL_CANONICAL}} placeholder", async () => {
       const socialWP = makeWP({ metadata: { approvalId: "approval-social" } });
       const socialApproval = makeApproval({

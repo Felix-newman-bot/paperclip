@@ -310,13 +310,24 @@ export function approvalService(db: Db) {
         .then((rows) => rows[0]);
     },
 
-    publish: async (id: string) => {
+    publish: async (id: string, publishMetadata?: Record<string, unknown>) => {
       const existing = await getExistingApproval(id);
+      if (existing.status === "published") {
+        return existing;
+      }
       if (existing.status !== "approved" && existing.status !== "scheduled") {
         throw unprocessable("Only approved or scheduled approvals can be published");
       }
       const now = new Date();
-      const updatedPayload = { ...(existing.payload as Record<string, unknown>), publishedAt: now.toISOString() };
+      const metadata = publishMetadata ?? {};
+      const publishedAt = typeof metadata.publishedAt === "string" && metadata.publishedAt.trim()
+        ? metadata.publishedAt.trim()
+        : now.toISOString();
+      const updatedPayload = {
+        ...(existing.payload as Record<string, unknown>),
+        ...metadata,
+        publishedAt,
+      };
       return db
         .update(approvals)
         .set({ status: "published", payload: updatedPayload, updatedAt: now })

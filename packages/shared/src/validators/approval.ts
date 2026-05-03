@@ -30,6 +30,18 @@ export const resubmitApprovalSchema = z.object({
 
 export type ResubmitApproval = z.infer<typeof resubmitApprovalSchema>;
 
+export const publishApprovalSchema = z.object({
+  publishedAt: z.string().optional(),
+  publishedUrl: z.string().optional(),
+  proofUrl: z.string().optional(),
+  postUrl: z.string().optional(),
+  platformChannel: z.string().optional(),
+  externalPostId: z.string().optional(),
+  proof: z.record(z.unknown()).optional(),
+});
+
+export type PublishApproval = z.infer<typeof publishApprovalSchema>;
+
 export const addApprovalCommentSchema = z.object({
   body: z.string().min(1),
 });

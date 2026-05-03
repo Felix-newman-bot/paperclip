@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import {
   createApprovalSchema,
+  publishApprovalSchema,
   requestApprovalRevisionSchema,
   resolveApprovalSchema,
   resubmitApprovalSchema,
@@ -36,6 +37,16 @@ interface ApprovalCreateOptions extends BaseClientOptions {
 
 interface ApprovalResubmitOptions extends BaseClientOptions {
   payload?: string;
+}
+
+interface ApprovalPublishOptions extends BaseClientOptions {
+  publishedAt?: string;
+  publishedUrl?: string;
+  proofUrl?: string;
+  postUrl?: string;
+  platformChannel?: string;
+  externalPostId?: string;
+  proof?: string;
 }
 
 interface ApprovalCommentOptions extends BaseClientOptions {
@@ -213,6 +224,39 @@ export function registerApprovalCommands(program: Command): void {
             payload: opts.payload ? parseJsonObject(opts.payload, "payload") : undefined,
           });
           const updated = await ctx.api.post<Approval>(`/api/approvals/${approvalId}/resubmit`, payload);
+          printOutput(updated, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    approval
+      .command("publish")
+      .description("Mark an approved or scheduled approval as published")
+      .argument("<approvalId>", "Approval ID")
+      .option("--published-at <iso>", "Published timestamp (defaults to server time)")
+      .option("--published-url <url>", "Canonical published URL or external proof ID")
+      .option("--proof-url <url>", "Published proof URL")
+      .option("--post-url <url>", "External post URL")
+      .option("--platform-channel <channel>", "Publishing channel, e.g. linkedin or x")
+      .option("--external-post-id <id>", "External platform post/share ID")
+      .option("--proof <json>", "Additional proof metadata as JSON object")
+      .action(async (approvalId: string, opts: ApprovalPublishOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const proof = opts.proof ? parseJsonObject(opts.proof, "proof") : undefined;
+          const payload = publishApprovalSchema.parse({
+            publishedAt: opts.publishedAt,
+            publishedUrl: opts.publishedUrl,
+            proofUrl: opts.proofUrl,
+            postUrl: opts.postUrl,
+            platformChannel: opts.platformChannel,
+            externalPostId: opts.externalPostId,
+            proof,
+          });
+          const updated = await ctx.api.post<Approval>(`/api/approvals/${approvalId}/publish`, payload);
           printOutput(updated, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);

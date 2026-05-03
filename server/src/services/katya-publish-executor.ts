@@ -14,6 +14,7 @@ export interface KatyaPublishExecutorTickResult {
   blogsDiscovered: number;
   socialsSubstituted: number;
   socialsDeferred: number;
+  socialsAlreadyPublished: number;
   errors: number;
 }
 
@@ -38,6 +39,23 @@ function hasBlogUrlPlaceholder(payload: Record<string, unknown> | null | undefin
     const v = payload[field];
     return typeof v === "string" && v.includes(BLOG_URL_PLACEHOLDER);
   });
+}
+
+function hasExternalPublishProof(payload: Record<string, unknown> | null | undefined): boolean {
+  if (!payload) return false;
+  for (const key of ["publishedUrl", "proofUrl", "postUrl", "url", "publishedProof", "externalPostId"] as const) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) return true;
+  }
+  const proof = payload.proof;
+  if (proof && typeof proof === "object") {
+    const proofObj = proof as Record<string, unknown>;
+    return ["urlOrPostId", "url", "postId", "externalPostId"].some((key) => {
+      const value = proofObj[key];
+      return typeof value === "string" && value.trim().length > 0;
+    });
+  }
+  return false;
 }
 
 function substituteBlogUrl(
@@ -79,6 +97,7 @@ export async function tickKatyaPublishExecutor(
     blogsDiscovered: 0,
     socialsSubstituted: 0,
     socialsDeferred: 0,
+    socialsAlreadyPublished: 0,
     errors: 0,
   };
 
@@ -209,6 +228,26 @@ export async function tickKatyaPublishExecutor(
   for (const { wp, approval } of socialItems) {
     try {
       const payload = approval.payload as Record<string, unknown>;
+      if (approval.status === "published" || hasExternalPublishProof(payload)) {
+        result.socialsAlreadyPublished += 1;
+        await db
+          .update(issueWorkProducts)
+          .set({
+            status: "completed",
+            metadata: sql`${issueWorkProducts.metadata} || ${JSON.stringify({
+              completedAt: new Date().toISOString(),
+              completionReason: "external_publish_proof_present",
+              approvalStatus: approval.status,
+            })}::jsonb`,
+            updatedAt: new Date(),
+          })
+          .where(eq(issueWorkProducts.id, wp.id));
+        logger.info(
+          { socialApprovalId: approval.id, issueId: wp.issueId, channel: payload.channel },
+          "katya-publish-executor: social approval already has external publish proof — skipping publish selection",
+        );
+        continue;
+      }
       if (!hasBlogUrlPlaceholder(payload)) continue;
 
       // Prefer URL already found from blog WPs on this issue.
@@ -312,7 +351,12 @@ export async function tickKatyaPublishExecutor(
     }
   }
 
-  if (result.socialsDeferred > 0 || result.socialsSubstituted > 0 || result.blogsDiscovered > 0) {
+  if (
+    result.socialsDeferred > 0 ||
+    result.socialsSubstituted > 0 ||
+    result.socialsAlreadyPublished > 0 ||
+    result.blogsDiscovered > 0
+  ) {
     logger.info(result, "katya-publish-executor tick complete");
   }
 
